@@ -12,8 +12,8 @@ info_object = pygame.display.Info() # Объект с информацией о 
 WIN_WIDTH = info_object.current_w # Ширина главного создаваемого окна
 WIN_HEIGHT = info_object.current_h # Высота
 WINDOW = (WIN_WIDTH, WIN_HEIGHT) # Заносим ширину и высоту в одну переменную
-
-G = 10
+FPS = 40
+G = 10 # Ускорение свободного падения
 
 class GameObject(pygame.sprite.Sprite):
 	# img - путь к файлу с изображением объекта
@@ -35,29 +35,55 @@ class Platform(GameObject):
 
 class Hero(GameObject):
 	def __init__(self, x, y):
-		self.img = './resources/characters/null_hero.png'
+		self.img = './resources/characters/stand.png'
 		GameObject.__init__(self, self.img, x, y)
 		self.action = 'stand'
 		self.v_x = 0
 		self.v_y = 0
+		self.power = 1 # Ускорение при беге
+		self.v_lim = 8 # Предельная скорость
 		self.on_ground = False
 		global CHARACTERS
 		CHARACTERS.add(self)
+		
+		self.sprites = list()
+		self.all_frames = pygame.image.load('./resources/characters/run.png')
+		self.sprites.append(self.all_frames.subsurface((36, 38 , 239, 293)))
+		self.sprites.append(self.all_frames.subsurface((287, 62, 239, 293)))
+		self.sprites.append(self.all_frames.subsurface((565, 72, 239, 293)))
+		self.sprites.append(self.all_frames.subsurface((851, 80, 239, 293)))
+		self.sprites.append(self.all_frames.subsurface((1114, 90, 239, 293)))
+		self.sprites.append(self.all_frames.subsurface((12, 404, 239, 293)))
+		self.sprites.append(self.all_frames.subsurface((291, 410, 239, 293)))
+		self.sprites.append(self.all_frames.subsurface((567, 406, 239, 293)))
+		self.sprites.append(self.all_frames.subsurface((835, 426, 239, 293)))
+		self.sprites.append(self.all_frames.subsurface((1115, 414, 239, 293)))
+		len_spr = len(self.sprites)
+		for i in range(len_spr):
+			self.sprites[i] = pygame.transform.scale(self.sprites[i], (64, 78))
+		
+		self.step_frames = len_spr/2 # Кол-во кадров на шаг
+		self.step_pixels = self.power # Кол-во пикселей на шаг
+		self.time = 0 # Время, уделяемое одному кадру в анимации (миллисекунды)
+		self.work_time = 0 # Прошло времени с первого кадра
+		self.skip_frame = 0 # Кол-во кадров, которые следует пропустить
+		self.frame = 0 # Номер текущего кадра относительно первого
 	
-	def update(self):
+	# Меняет положение согласно действующим силам, вызывает обновление изображения спрайта
+	def update(self, dt):
 		if self.action == 'left':
-			self.v_x += -2
-			if self.v_x < -55:
-				self.v_x = -55
+			self.v_x += -self.power
+			if self.v_x < -self.v_lim:
+				self.v_x = -self.v_lim
 		elif self.action == 'right':
-			self.v_x += 2
-			if self.v_x > 55:
-				self.v_x = 55
+			self.v_x += self.power
+			if self.v_x > self.v_lim:
+				self.v_x = self.v_lim
 		elif self.action == 'up' and self.on_ground:
 				self.v_y = -30
 		elif self.action == 'stand' and self.on_ground:
-			self.v_x += math.copysign(2, -self.v_x)
-			if abs(self.v_x) <= 2:
+			self.v_x += math.copysign(self.power, -self.v_x) # Замедление при остановке
+			if abs(self.v_x) <= self.power:
 				self.v_x = 0
 		
 		if not self.on_ground:
@@ -66,6 +92,28 @@ class Hero(GameObject):
 		self.on_ground = False
 		self.rect.x += self.v_x
 		self.rect.y += self.v_y
+		
+		if self.v_x == 0:
+			self.time = 0
+			self.image = pygame.image.load('./resources/characters/stand.png')
+		else:
+			self.time = self.step_pixels/(self.step_frames * abs(self.v_x))
+		self.update_img(dt)
+	
+	# Обновляет изображение спрайта
+	def update_img(self, dt):
+		self.work_time += dt
+		time = int(self.time * 1000) # В миллисекунды
+		if self.time != 0:
+			print(self.work_time)
+			self.skip_frame = self.work_time // time
+			self.work_time = self.work_time % time
+			self.frame += self.skip_frame
+			print(self.work_time, self.skip_frame)
+			if self.frame >= len(self.sprites):
+				self.frame = 0
+			print(self.frame, 1/self.time)
+			self.image = self.sprites[self.frame]
 
 def init_window():
 	global WINDOW
@@ -145,29 +193,27 @@ def main():
 	# Засовывать это в init_window() нельзя: screen требуется для draw() персонажей,
 	# и сделать screen глобальным параметром, определив до создания окна, тоже невозможно
 	hero = Hero(100, 100)
-	Platform(100,200)
-	Platform(132,200)
-	Platform(164,200)
-	Platform(196,200)
-	Platform(228,200)
-	Platform(260,200)
-	Platform(292,200)
+	for i in range(36):
+		Platform(100+32*i,200)
 	
 	global CHARACTERS
 	global PLATFORMS
 	objects = pygame.sprite.Group()
 	objects.add(CHARACTERS)
 	objects.add(PLATFORMS)
-
+	
+	global FPS
+	dt = 0
+	Clock = pygame.time.Clock()
 # В бесконечном цикле принимаем и обрабатываем сообщения
-	while 1: 
+	while 1:
 		process_events(pygame.event.get(), hero)
 		draw_background(screen, background) # Фон перерисовывается поверх устаревших положений персонажей
-		hero.update()
+		hero.update(dt)
 		collide(CHARACTERS, PLATFORMS)
 		objects.draw(screen)
 		pygame.display.update() # Обновление экрана
-
+		dt = Clock.tick(60)
 # Если этот файл импортируется в другой, этот __name__ равен имени импортируемого файла 
 # без пути и расширения ('main'). Если файл запускается непосредственно, __name__  
 # принимает значенние __main__
