@@ -5,14 +5,67 @@ from pygame.locals import * # pygame.locals содержит константы 
 import math
 
 pygame.init() # Инициация PyGame, обязательная строчка
+CHARACTERS = pygame.sprite.Group()
+PLATFORMS = pygame.sprite.Group()
 
 info_object = pygame.display.Info() # Объект с информацией о графической среде компьютера
 WIN_WIDTH = info_object.current_w # Ширина главного создаваемого окна
 WIN_HEIGHT = info_object.current_h # Высота
 WINDOW = (WIN_WIDTH, WIN_HEIGHT) # Заносим ширину и высоту в одну переменную
 
-class hero():
-	pass
+G = 10
+
+class GameObject(pygame.sprite.Sprite):
+	# img - путь к файлу с изображением объекта
+	# x, y - координаты объекта на игровом поле
+	def __init__(self, img, x, y):
+		pygame.sprite.Sprite.__init__(self)
+		self.image = pygame.image.load(img) # Загружаем изображение объекта
+		self.x = x
+		self.y = y
+		img_width, img_height = self.image.get_size()
+		self.rect = Rect(x, y, img_width, img_height)
+
+class Platform(GameObject):
+	def __init__(self, x, y):
+		self.img = './resources/platforms/wall.png'
+		GameObject.__init__(self, self.img, x, y)
+		global PLATFORMS
+		PLATFORMS.add(self)
+
+class Hero(GameObject):
+	def __init__(self, x, y):
+		self.img = './resources/characters/null_hero.png'
+		GameObject.__init__(self, self.img, x, y)
+		self.action = 'stand'
+		self.v_x = 0
+		self.v_y = 0
+		self.on_ground = False
+		global CHARACTERS
+		CHARACTERS.add(self)
+	
+	def update(self):
+		if self.action == 'left':
+			self.v_x += -2
+			if self.v_x < -55:
+				self.v_x = -55
+		elif self.action == 'right':
+			self.v_x += 2
+			if self.v_x > 55:
+				self.v_x = 55
+		elif self.action == 'up' and self.on_ground:
+				self.v_y = -30
+		elif self.action == 'stand' and self.on_ground:
+			self.v_x += math.copysign(2, -self.v_x)
+			if abs(self.v_x) <= 2:
+				self.v_x = 0
+		
+		if not self.on_ground:
+			global G
+			self.v_y += G
+		self.on_ground = False
+		self.rect.x += self.v_x
+		self.rect.y += self.v_y
 
 def init_window():
 	global WINDOW
@@ -47,34 +100,74 @@ def process_events(events, hero):
 
 		elif event.type == KEYDOWN:
 
-			# Выставляем значение поля direction у персонажа в зависимости от нажатой клавиши
+			# Выставляем значение поля action у персонажа в зависимости от нажатой клавиши
 			if event.key == K_LEFT:
-				hero.direction = 3
+				hero.action = 'left'
 			elif event.key == K_RIGHT:
-				hero.direction = 1
-			elif event.key == K_UP:
-				hero.direction = 4
+				hero.action = 'right'
 			elif event.key == K_DOWN:
-				hero.direction = 2
-			elif event.key == K_SPACE:
-				hero.direction = 0
-
-			# Запуск тестового режима
-			elif event.key == K_t:
-				test()
+				hero.action = 'down'
+			elif event.key == K_UP:
+				hero.action = 'up'
 		
+		elif event.type == KEYUP:
+			hero.action = 'stand'
+
+# Обрабатывает столкновения
+def collide(characters, platforms):
+	for char in characters.sprites():
+		for plate in platforms.sprites():
+			if pygame.sprite.collide_rect(char, plate): # Если персонаж столкнулся с платформой
+				char.rect.x -= char.v_x # Если бы персонаж не двигался по x
+				if not pygame.sprite.collide_rect(char, plate): # и столкновения бы не произошло
+					if char.v_x > 0: # Если движется вправо
+						char.rect.right = plate.rect.left
+					if char.v_x < 0: #	Если влево
+						char.rect.left = plate.rect.right
+				else:
+					char.rect.x += char.v_x
+					if char.v_y > 0: # Если падает
+						char.rect.bottom = plate.rect.top
+						char.on_ground = True # Столкнулся - находится на земле
+						char.v_y = 0
+					if char.v_y < 0: # Если вверх
+						char.rect.top = plate.rect.bottom
+						char.v_y = 0
+			else:
+				global G
+				char.rect.y += G
+				if pygame.sprite.collide_rect(char, plate): # Если под ногами что-то есть
+					char.on_ground = True
+				char.rect.y -= G
 def main():
 	background = pygame.image.load("./resources/backgrounds/background.png") # Загружаем изображение
 	screen = pygame.display.get_surface()
 	# Засовывать это в init_window() нельзя: screen требуется для draw() персонажей,
 	# и сделать screen глобальным параметром, определив до создания окна, тоже невозможно
+	hero = Hero(100, 100)
+	Platform(100,200)
+	Platform(132,200)
+	Platform(164,200)
+	Platform(196,200)
+	Platform(228,200)
+	Platform(260,200)
+	Platform(292,200)
+	
+	global CHARACTERS
+	global PLATFORMS
+	objects = pygame.sprite.Group()
+	objects.add(CHARACTERS)
+	objects.add(PLATFORMS)
 
 # В бесконечном цикле принимаем и обрабатываем сообщения
 	while 1: 
 		process_events(pygame.event.get(), hero)
 		draw_background(screen, background) # Фон перерисовывается поверх устаревших положений персонажей
+		hero.update()
+		collide(CHARACTERS, PLATFORMS)
+		objects.draw(screen)
 		pygame.display.update() # Обновление экрана
-		
+
 # Если этот файл импортируется в другой, этот __name__ равен имени импортируемого файла 
 # без пути и расширения ('main'). Если файл запускается непосредственно, __name__  
 # принимает значенние __main__
