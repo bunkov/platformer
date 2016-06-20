@@ -3,6 +3,8 @@ import pygame
 import sys # Взаимодействует с интерпретатором Python'а
 from pygame.locals import * # pygame.locals содержит константы pygame (типа QUIT или K_ESCAPE)
 import math
+import pyganim # Для анимации
+import os # Для работы с файловой системой
 
 pygame.init() # Инициация PyGame, обязательная строчка
 CHARACTERS = pygame.sprite.Group()
@@ -12,7 +14,7 @@ info_object = pygame.display.Info() # Объект с информацией о 
 WIN_WIDTH = info_object.current_w # Ширина главного создаваемого окна
 WIN_HEIGHT = info_object.current_h # Высота
 WINDOW = (WIN_WIDTH, WIN_HEIGHT) # Заносим ширину и высоту в одну переменную
-FPS = 40
+FPS = 160
 G = 10 # Ускорение свободного падения
 
 class GameObject(pygame.sprite.Sprite):
@@ -35,53 +37,47 @@ class Platform(GameObject):
 
 class Hero(GameObject):
 	def __init__(self, x, y):
-		self.img = './resources/characters/stand.png'
+		self.img = './resources/characters/hero/stand/1.png'
+		self.right_standing = pygame.image.load(self.img)
+		self.left_standing = pygame.transform.flip(self.right_standing, True, False)
 		GameObject.__init__(self, self.img, x, y)
-		self.action = 'stand'
+		
+		self.running = self.on_ground = self.left = self.right = self.down = self.up = False
+		
 		self.v_x = 0
 		self.v_y = 0
-		self.power = 1 # Ускорение при беге
-		self.v_lim = 8 # Предельная скорость
-		self.on_ground = False
+		self.power = 4 # Ускорение при беге
+		self.v_lim = 10 # Предельная скорость
+		self.direction = 'right'
+		
 		global CHARACTERS
 		CHARACTERS.add(self)
 		
-		self.sprites = list()
-		self.all_frames = pygame.image.load('./resources/characters/run.png')
-		self.sprites.append(self.all_frames.subsurface((36, 38 , 239, 293)))
-		self.sprites.append(self.all_frames.subsurface((287, 62, 239, 293)))
-		self.sprites.append(self.all_frames.subsurface((565, 72, 239, 293)))
-		self.sprites.append(self.all_frames.subsurface((851, 80, 239, 293)))
-		self.sprites.append(self.all_frames.subsurface((1114, 90, 239, 293)))
-		self.sprites.append(self.all_frames.subsurface((12, 404, 239, 293)))
-		self.sprites.append(self.all_frames.subsurface((291, 410, 239, 293)))
-		self.sprites.append(self.all_frames.subsurface((567, 406, 239, 293)))
-		self.sprites.append(self.all_frames.subsurface((835, 426, 239, 293)))
-		self.sprites.append(self.all_frames.subsurface((1115, 414, 239, 293)))
-		len_spr = len(self.sprites)
-		for i in range(len_spr):
-			self.sprites[i] = pygame.transform.scale(self.sprites[i], (64, 78))
-		
-		self.step_frames = len_spr/2 # Кол-во кадров на шаг
-		self.step_pixels = self.power # Кол-во пикселей на шаг
-		self.time = 0 # Время, уделяемое одному кадру в анимации (миллисекунды)
-		self.work_time = 0 # Прошло времени с первого кадра
-		self.skip_frame = 0 # Кол-во кадров, которые следует пропустить
-		self.frame = 0 # Номер текущего кадра относительно первого
+		animTypes = 'jump roll right_run'.split()
+		self.animObjs = {}
+		for animType in animTypes:
+			path = './resources/characters/hero/%s/' % animType
+			num_files = len(os.listdir(path))
+			imagesAndDurations = [(path + '%s.png' % str(num), 200) for num in range(1, num_files + 1)]
+			self.animObjs[animType] = pyganim.PygAnimation(imagesAndDurations)
+		self.animObjs['left_run'] = self.animObjs['right_run'].getCopy()
+		self.animObjs['left_run'].flip(True, False)
+		self.animObjs['left_run'].makeTransformsPermanent()
+		self.moveConductor = pyganim.PygConductor(self.animObjs)
 	
-	# Меняет положение согласно действующим силам, вызывает обновление изображения спрайта
-	def update(self, dt):
-		if self.action == 'left':
+	# Меняет положение согласно действующим силам
+	def update(self):
+		if self.left:
 			self.v_x += -self.power
 			if self.v_x < -self.v_lim:
 				self.v_x = -self.v_lim
-		elif self.action == 'right':
+		elif self.right:
 			self.v_x += self.power
 			if self.v_x > self.v_lim:
 				self.v_x = self.v_lim
-		elif self.action == 'up' and self.on_ground:
+		elif self.up and self.on_ground:
 				self.v_y = -30
-		elif self.action == 'stand' and self.on_ground:
+		elif not(self.running) and self.on_ground and self.v_x != 0:
 			self.v_x += math.copysign(self.power, -self.v_x) # Замедление при остановке
 			if abs(self.v_x) <= self.power:
 				self.v_x = 0
@@ -92,32 +88,31 @@ class Hero(GameObject):
 		self.on_ground = False
 		self.rect.x += self.v_x
 		self.rect.y += self.v_y
-		
-		if self.v_x == 0:
-			self.time = 0
-			self.image = pygame.image.load('./resources/characters/stand.png')
-		else:
-			self.time = self.step_pixels/(self.step_frames * abs(self.v_x))
-		self.update_img(dt)
 	
-	# Обновляет изображение спрайта
-	def update_img(self, dt):
-		self.work_time += dt
-		time = int(self.time * 1000) # В миллисекунды
-		if self.time != 0:
-			print(self.work_time)
-			self.skip_frame = self.work_time // time
-			self.work_time = self.work_time % time
-			self.frame += self.skip_frame
-			print(self.work_time, self.skip_frame)
-			if self.frame >= len(self.sprites):
-				self.frame = 0
-			print(self.frame, 1/self.time)
-			self.image = self.sprites[self.frame]
+	# Отвечает за анимацию
+	def draw(self, scr):	
+		x = self.rect.x
+		y = self.rect.y
+		if self.running or not(self.on_ground):
+			self.moveConductor.play()
+			if self.direction == 'up':
+				self.animObjs['jump'].blit(scr, (x, y))
+			elif self.direction == 'down':
+				self.animObjs['roll'].blit(scr, (x, y))
+			elif self.direction == 'left':
+				self.animObjs['left_run'].blit(scr, (x, y))
+			elif self.direction == 'right':
+				self.animObjs['right_run'].blit(scr, (x, y))
+		else:
+			self.moveConductor.stop()
+			if self.direction == 'left':
+				scr.blit(self.left_standing, (x, y))
+			elif self.direction == 'right':
+				scr.blit(self.right_standing, (x, y))
 
 def init_window():
 	global WINDOW
-	pygame.display.set_mode(WINDOW, pygame.FULLSCREEN) # Создаем окно
+	pygame.display.set_mode(WINDOW, pygame.FULLSCREEN | pygame.HWSURFACE | pygame.DOUBLEBUF) # Создаем окно
 	pygame.display.set_caption("Platformer") # Задаем заголовок окна
 
 # Рисует фон
@@ -148,18 +143,50 @@ def process_events(events, hero):
 
 		elif event.type == KEYDOWN:
 
-			# Выставляем значение поля action у персонажа в зависимости от нажатой клавиши
 			if event.key == K_LEFT:
-				hero.action = 'left'
+				hero.left = True
+				hero.right = False
+				hero.running = True
+				if not (hero.up or hero.down):
+					hero.direction = 'left'
+					# direction влияет только на анимацию, но не на обсчет положения
+					# Поэтому в ином случае спрайт просто не понменяется, например, с верхнего на левый
 			elif event.key == K_RIGHT:
-				hero.action = 'right'
+				hero.right = True
+				hero.left = False
+				hero.running = True
+				if not (hero.up or hero.down):
+					hero.direction = 'right'
 			elif event.key == K_DOWN:
-				hero.action = 'down'
+				hero.down = True
+				hero.up = False
+				if not (hero.left or hero.right):
+					hero.direction = 'down'
 			elif event.key == K_UP:
-				hero.action = 'up'
+				hero.up = True
+				hero.down = False
+				hero.direction = 'up'
+				
 		
 		elif event.type == KEYUP:
-			hero.action = 'stand'
+			
+			if event.key == K_UP:
+				hero.up = False
+			elif event.key == K_DOWN:
+				hero.down = False
+				if hero.left:
+					hero.direction = 'left'
+				if hero.right:
+					hero.direction = 'right'
+				# Если зажато 2 кнопки, спрайт, возмонжо, был нижний
+			elif event.key == K_LEFT:
+				hero.left = False
+				if hero.down:
+					hero.direction = 'down'
+			elif event.key == K_RIGHT:
+				hero.right = False
+				if hero.down:
+					hero.direction = 'down'
 
 # Обрабатывает столкновения
 def collide(characters, platforms):
@@ -178,6 +205,10 @@ def collide(characters, platforms):
 						char.rect.bottom = plate.rect.top
 						char.on_ground = True # Столкнулся - находится на земле
 						char.v_y = 0
+						if char.left:
+							char.direction = 'left'
+						if char.right:
+							char.direction = 'right'
 					if char.v_y < 0: # Если вверх
 						char.rect.top = plate.rect.bottom
 						char.v_y = 0
@@ -187,6 +218,7 @@ def collide(characters, platforms):
 				if pygame.sprite.collide_rect(char, plate): # Если под ногами что-то есть
 					char.on_ground = True
 				char.rect.y -= G
+				
 def main():
 	background = pygame.image.load("./resources/backgrounds/background.png") # Загружаем изображение
 	screen = pygame.display.get_surface()
@@ -203,17 +235,18 @@ def main():
 	objects.add(PLATFORMS)
 	
 	global FPS
-	dt = 0
 	Clock = pygame.time.Clock()
 # В бесконечном цикле принимаем и обрабатываем сообщения
 	while 1:
 		process_events(pygame.event.get(), hero)
 		draw_background(screen, background) # Фон перерисовывается поверх устаревших положений персонажей
-		hero.update(dt)
+		hero.update()
 		collide(CHARACTERS, PLATFORMS)
-		objects.draw(screen)
+		PLATFORMS.draw(screen)
+		hero.draw(screen)
 		pygame.display.update() # Обновление экрана
-		dt = Clock.tick(60)
+		Clock.tick(FPS)
+
 # Если этот файл импортируется в другой, этот __name__ равен имени импортируемого файла 
 # без пути и расширения ('main'). Если файл запускается непосредственно, __name__  
 # принимает значенние __main__
