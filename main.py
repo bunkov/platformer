@@ -47,30 +47,38 @@ class Hero(GameObject):
 		self.left_standing = pygame.transform.flip(self.right_standing, True, False)
 		GameObject.__init__(self, self.img, x, y)
 		
-		self.running = self.on_ground = self.left = self.right = self.down = self.up = self.jumping = False
+		self.on_ground = self.left = self.right = self.down = self.up = self.jumping = False
 		
 		self.v_x = 0
 		self.v_y = 0
-		self.power = 0.5*self.height/FPS # Ускорение при беге
-		self.v_lim = 6*self.height/FPS # Предельная скорость 
+		self.power = 2*self.height/FPS # Ускорение при беге. 
+		# Из-за него на данный момент прохождение сквозь стены
+		self.v_lim = 12*self.height/FPS # Предельная скорость 
 		# Скорость [высот/тик] = [высот/с] / [тик/с]
 		self.direction = 'right'
 		
 		CHARACTERS.add(self)
 		
-		animTypes = 'right_jump roll right_run'.split()
+		animTypes = 'jump roll run'.split()
 		self.animObjs = {}
+		
 		for animType in animTypes:
-			path = './resources/characters/hero/%s/' % animType
-			num_files = len(os.listdir(path))
-			imagesAndDurations = [(path + '%s.png' % str(num), 60) for num in range(1, num_files + 1)]
-			self.animObjs[animType] = pyganim.PygAnimation(imagesAndDurations)
-		self.animObjs['left_run'] = self.animObjs['right_run'].getCopy()
-		self.animObjs['left_run'].flip(True, False) # Отразить по горизонтали
-		self.animObjs['left_run'].makeTransformsPermanent()
-		self.animObjs['left_jump'] = self.animObjs['right_jump'].getCopy()
-		self.animObjs['left_jump'].flip(True, False)
-		self.animObjs['left_jump'].makeTransformsPermanent()
+			animType_r = 'right_' + animType
+			animType_l = 'left_' + animType
+			path = './resources/characters/hero/%s/' % animType_r
+			files = os.listdir(path)
+			num_files = 0
+			for file in files:
+				if file[-4:] == '.png': # В папке могут содержаться скрытые системные файлы, например, Thumbs.db
+					num_files += 1
+					
+			imagesAndDurations = [(path + str(num) + '.png', 60) for num in range(1, num_files + 1)]
+			self.animObjs[animType_r] = pyganim.PygAnimation(imagesAndDurations)
+			
+			self.animObjs[animType_l] = self.animObjs[animType_r].getCopy()
+			self.animObjs[animType_l].flip(True, False) # Отразить по горизонтали
+			self.animObjs[animType_l].makeTransformsPermanent()
+
 		self.moveConductor = pyganim.PygConductor(self.animObjs)
 	
 	# Меняет положение согласно действующим силам
@@ -85,7 +93,7 @@ class Hero(GameObject):
 			self.v_x += self.power
 			if self.v_x > self.v_lim:
 				self.v_x = self.v_lim
-		elif not(self.running) and self.on_ground:  
+		elif not(self.left or self.right) and self.on_ground:  
 			self.v_x = 0
 			'''and self.v_x != 0:
 			self.v_x += math.copysign(self.power, -self.v_x) # Замедление при остановке
@@ -106,24 +114,25 @@ class Hero(GameObject):
 	def draw(self, scr):	
 		x = self.rect.x
 		y = self.rect.y
-		if self.running or not(self.on_ground):
+		coords = (x, y)
+		if self.left or self.right or self.jumping:
 			self.moveConductor.play()
 			if self.direction == 'left':
 				if self.jumping:
-					self.animObjs['left_jump'].blit(scr, (x, y))
+					self.animObjs['left_jump'].blit(scr, coords)
 				else:
-					self.animObjs['left_run'].blit(scr, (x, y))
+					self.animObjs['left_run'].blit(scr, coords)
 			else: # self.direction == 'right'
 				if self.jumping:
-					self.animObjs['right_jump'].blit(scr, (x, y))
+					self.animObjs['right_jump'].blit(scr, coords)
 				else:
-					self.animObjs['right_run'].blit(scr, (x, y))
+					self.animObjs['right_run'].blit(scr, coords)
 		else: # standing
 			self.moveConductor.stop()
 			if self.direction == 'left':
-				scr.blit(self.left_standing, (x, y))
+				scr.blit(self.left_standing, coords)
 			elif self.direction == 'right':
-				scr.blit(self.right_standing, (x, y))
+				scr.blit(self.right_standing, coords)
 
 def init_window():
 	global WINDOW
@@ -151,11 +160,10 @@ def draw_background(scr, img = None):
 	scr.blit(background, (0, 0))
 
 # Обрабатывает события
-def process_events(events, hero,n,s):
+def process_events(events, hero):
 	for event in events:
 		# Если была нажата кнопка закрытия окна или клавиша Esc, то процесс завершается
 		if (event.type == QUIT) or (event.type == KEYDOWN and event.key == K_ESCAPE):
-			print(n/s*1000)
 			sys.exit(0) # 0 - не кидать исключение SystemExit
 
 		elif event.type == KEYDOWN:
@@ -163,12 +171,10 @@ def process_events(events, hero,n,s):
 			if event.key == K_LEFT:
 				hero.left = True
 				hero.right = False
-				hero.running = True
 				hero.direction = 'left'
 			elif event.key == K_RIGHT:
 				hero.right = True
 				hero.left = False
-				hero.running = True
 				hero.direction = 'right'
 			elif event.key == K_DOWN:
 				hero.down = True
@@ -187,12 +193,8 @@ def process_events(events, hero,n,s):
 				hero.down = False
 			elif event.key == K_LEFT:
 				hero.left = False
-				if not(hero.right):
-					hero.running = False
 			elif event.key == K_RIGHT:
 				hero.right = False
-				if not(hero.left):
-					hero.running = False
 
 # Обрабатывает столкновения
 def collide(characters, platforms):
@@ -201,7 +203,10 @@ def collide(characters, platforms):
 	for char in characters.sprites():
 		for plate in platforms.sprites():
 			if pygame.sprite.collide_rect(char, plate): # Если персонаж столкнулся с платформой
-				char.rect.x -= char.v_x # Если бы персонаж не двигался по x
+				# Если бы персонаж не двигался по x
+				char.rect.x -= math.copysign(math.ceil(abs(char.v_x)), char.v_x) 
+				# (Из-за дробей смещение происходит на величину, большую скорости,
+				# что приводит к прохождению стен при использовании char.rect.x -= char.v_x)
 				if not pygame.sprite.collide_rect(char, plate): # и столкновения бы не произошло
 					if char.v_x > 0: # Если движется вправо
 						char.rect.right = plate.rect.left
@@ -213,7 +218,8 @@ def collide(characters, platforms):
 						char.rect.bottom = plate.rect.top
 						char.on_ground = True # Столкнулся - находится на земле
 						char.v_y = 0
-						char.jumping = False
+						if not(char.up):
+							char.jumping = False
 					if char.v_y < 0: # Если вверх
 						char.rect.top = plate.rect.bottom
 						char.v_y = 0
@@ -222,6 +228,22 @@ def collide(characters, platforms):
 				if pygame.sprite.collide_rect(char, plate): # Если под ногами что-то есть
 					char.on_ground = True
 				char.rect.y -= G
+
+# Отображает FPS на экране
+def print_info(scr, font, seconds, frames, hero):
+	global WINDOW
+	
+	fps = int(frames/seconds*10)/10
+	
+	infoParams = 'fps hero.direction hero.on_ground hero.jumping hero.rect.x hero.rect.y'.split()
+	i = 1
+	for param in infoParams:
+		infStr = '%s = %s' % (param, eval(param))
+		infSurf = font.render(infStr, False, (255, 255, 255))
+		infRect = infSurf.get_rect()
+		infRect.topright = (WINDOW[0] - 20, 20*i)
+		scr.blit(infSurf, infRect)
+		i += 1
 				
 def main():
 	global FPS
@@ -232,32 +254,36 @@ def main():
 	screen = pygame.display.get_surface()
 	# Засовывать это в init_window() нельзя: screen требуется для draw() персонажей,
 	# и сделать screen глобальным параметром, определив до создания окна, тоже невозможно
+	
 	hero = Hero(100, 100)
 	for i in range(36):
 		Platform(100+32*i,600)
 	for i in range(10):
 		Platform(300+32*i,536)
 	
-	objects = pygame.sprite.Group()
+	'''objects = pygame.sprite.Group()
 	objects.add(CHARACTERS)
-	objects.add(PLATFORMS)
+	objects.add(PLATFORMS)'''
 	
-	s=n=0
+	play_time = 0
 	
 	Clock = pygame.time.Clock()
+	
+	text_font = pygame.font.Font('freesansbold.ttf', 16)
 
 # В бесконечном цикле принимаем и обрабатываем сообщения
 	while 1:
-		process_events(pygame.event.get(), hero,n,s)
+		process_events(pygame.event.get(), hero)
 		draw_background(screen, background) # Фон перерисовывается поверх устаревших положений персонажей
 		hero.update()
 		collide(CHARACTERS, PLATFORMS)
 		PLATFORMS.draw(screen)
 		hero.draw(screen)
-		pygame.display.update() # Обновление экрана
 		
-		s+=Clock.tick(FPS)
-		n+=1
+		tick = Clock.tick(FPS)
+		print_info(screen, text_font, tick/1000, 1, hero)
+		
+		pygame.display.update() # Обновление экрана
 
 # Если этот файл импортируется в другой, этот __name__ равен имени импортируемого файла 
 # без пути и расширения ('main'). Если файл запускается непосредственно, __name__  
