@@ -14,6 +14,7 @@ info_object = pygame.display.Info() # Объект с информацией о 
 WIN_WIDTH = info_object.current_w # Ширина главного создаваемого окна
 WIN_HEIGHT = info_object.current_h # Высота
 WINDOW = (WIN_WIDTH, WIN_HEIGHT) # Заносим ширину и высоту в одну переменную
+HALF_WINDOW = (WIN_WIDTH//2, WIN_HEIGHT//2)
 FPS = 60
 G = 1 # Ускорение свободного падения
 
@@ -27,6 +28,12 @@ class GameObject(pygame.sprite.Sprite):
 		self.y = y
 		self.width, self.height = self.image.get_size()
 		self.rect = Rect(x, y, self.width, self.height)
+	
+	def draw(self, scr, dx, dy):
+		x = self.x + dx
+		y = self.y + dy
+		coords = (x, y)
+		scr.blit(self.image, coords)
 
 class Platform(GameObject):
 	def __init__(self, x, y):
@@ -111,9 +118,9 @@ class Hero(GameObject):
 		self.rect.y += self.v_y
 	
 	# Отвечает за анимацию
-	def draw(self, scr):	
-		x = self.rect.x
-		y = self.rect.y
+	def draw(self, scr, dx, dy):	
+		x = self.rect.x + dx
+		y = self.rect.y + dy
 		coords = (x, y)
 		if self.left or self.right or self.jumping:
 			self.moveConductor.play()
@@ -133,6 +140,37 @@ class Hero(GameObject):
 				scr.blit(self.left_standing, coords)
 			elif self.direction == 'right':
 				scr.blit(self.right_standing, coords)
+
+class Camera():
+	def __init__(self, level_width, level_height):
+		global WINDOW
+		
+		self.max_dx = level_width - WINDOW[0]
+		self.max_dy = level_height - WINDOW[1]
+
+	def update(self, target):
+		# target - за кем следует камера
+		global HALF_WINDOW
+		
+		x, y, _, _ = target.rect
+		dx, dy = x - HALF_WINDOW[0], y - HALF_WINDOW[1] 
+		# Куда и в каком направлении сместилась цель относительно точки (HALF_WIDTH, HALF_HEIGHT)
+
+		if dx < 0:
+			dx = 0
+			# Когда смещение цели отрицательно, в сторону левой границы, не смещать поле
+		elif dx > self.max_dx:
+			dx = self.max_dx
+			# Когда в сторону правой границы
+		if dy < 0:
+			dy = 0
+			# В сторону верхней
+		elif dy > self.max_dy:
+			dy = self.max_dy
+			# К нижней
+		
+		# Вернуть смещение объектов для отрисовки (оно противоположно по направлению смещению героя)
+		return -dx, -dy
 
 def init_window():
 	global WINDOW
@@ -256,16 +294,16 @@ def main():
 	# и сделать screen глобальным параметром, определив до создания окна, тоже невозможно
 	
 	hero = Hero(100, 100)
-	for i in range(36):
+	for i in range(130):
 		Platform(100+32*i,600)
 	for i in range(10):
 		Platform(300+32*i,536)
+	camera = Camera(4000, 2000)
 	
-	'''objects = pygame.sprite.Group()
+	objects = pygame.sprite.Group()
 	objects.add(CHARACTERS)
-	objects.add(PLATFORMS)'''
-	
-	play_time = 0
+	objects.add(PLATFORMS)
+	sprites = objects.sprites()
 	
 	Clock = pygame.time.Clock()
 	
@@ -274,11 +312,14 @@ def main():
 # В бесконечном цикле принимаем и обрабатываем сообщения
 	while 1:
 		process_events(pygame.event.get(), hero)
-		draw_background(screen, background) # Фон перерисовывается поверх устаревших положений персонажей
+		
 		hero.update()
 		collide(CHARACTERS, PLATFORMS)
-		PLATFORMS.draw(screen)
-		hero.draw(screen)
+		dx, dy = camera.update(hero)
+		
+		draw_background(screen, background) # Фон перерисовывается поверх устаревших положений персонажей
+		for sprite in sprites:
+			sprite.draw(screen, dx, dy)
 		
 		tick = Clock.tick(FPS)
 		print_info(screen, text_font, tick/1000, 1, hero)
