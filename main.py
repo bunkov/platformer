@@ -18,41 +18,50 @@ HALF_WINDOW = (WIN_WIDTH//2, WIN_HEIGHT//2)
 FPS = 60
 G = 1 # Ускорение свободного падения
 
+# Базовый класс, используемый подвижными и неподвижными, проходимыми и непроходимыми объектами
 class GameObject(pygame.sprite.Sprite):
 	# img - путь к файлу с изображением объекта
 	# x, y - координаты объекта на игровом поле
-	def __init__(self, img, x, y):
+	# prohod - проходимый ли объект
+	def __init__(self, img, x, y, prohod):
 		pygame.sprite.Sprite.__init__(self)
-		self.image = pygame.image.load(img) # Загружаем изображение объекта
+		self.image = pygame.image.load(img).convert() # Загружаем изображение объекта
 		self.x = x
 		self.y = y
 		self.width, self.height = self.image.get_size()
 		self.rect = Rect(x, y, self.width, self.height)
 	
-	def draw(self, scr, dx, dy):
+	# scr - поверхность для отрисовки
+	# dx, dy - смещение рисунка от действительного положения
+	def draw(self, scr, dx = 0, dy = 0):
 		x = self.x + dx
 		y = self.y + dy
 		coords = (x, y)
 		scr.blit(self.image, coords)
 
+# Платформы
 class Platform(GameObject):
-	def __init__(self, x, y):
+	# x, y - координаты объекта на игровом поле
+	# prohod - проходимый ли объект
+	def __init__(self, x, y, prohod = True, img = None):
 		global PLATFORMS
 	
 		self.img = './resources/platforms/wall.png'
-		GameObject.__init__(self, self.img, x, y)
+		super().__init__(self.img, x, y, prohod)
 		
 		PLATFORMS.add(self)
 
+# Управляемый персонаж
 class Hero(GameObject):
-	def __init__(self, x, y):
+	# x, y - координаты объекта на игровом поле
+	def __init__(self, x, y, prohod = True):
 		global CHARACTERS
 		global FPS
 		
 		self.img = './resources/characters/hero/stand/1.png'
 		self.right_standing = pygame.image.load(self.img)
 		self.left_standing = pygame.transform.flip(self.right_standing, True, False)
-		GameObject.__init__(self, self.img, x, y)
+		super().__init__(self.img, x, y, prohod)
 		
 		self.on_ground = self.left = self.right = self.down = self.up = self.jumping = False
 		
@@ -118,6 +127,8 @@ class Hero(GameObject):
 		self.rect.y += self.v_y
 	
 	# Отвечает за анимацию
+	# scr - поверхность для отрисовки
+	# dx, dy - смещение рисунка от действительного положения
 	def draw(self, scr, dx, dy):	
 		x = self.rect.x + dx
 		y = self.rect.y + dy
@@ -141,15 +152,18 @@ class Hero(GameObject):
 			elif self.direction == 'right':
 				scr.blit(self.right_standing, coords)
 
+# Реализация скроллинга
 class Camera():
+	# level_width, level_height - размеры игрового поля
 	def __init__(self, level_width, level_height):
 		global WINDOW
 		
 		self.max_dx = level_width - WINDOW[0]
 		self.max_dy = level_height - WINDOW[1]
 
+	# Возвращает смещение для методов draw
+	# target - за кем следует камера
 	def update(self, target):
-		# target - за кем следует камера
 		global HALF_WINDOW
 		
 		x, y, _, _ = target.rect
@@ -171,18 +185,14 @@ class Camera():
 		
 		# Вернуть смещение объектов для отрисовки (оно противоположно по направлению смещению героя)
 		return -dx, -dy
-
-def init_window():
-	global WINDOW
-	
-	pygame.display.set_mode(WINDOW, pygame.FULLSCREEN | pygame.HWSURFACE | pygame.DOUBLEBUF) # Создаем окно
-	pygame.display.set_caption("Platformer") # Задаем заголовок окна
+		# Сами объекты не смещаются
+		# TODO: отдаление камеры при ускорении для повышения реакции
 
 # Рисует фон
 # scr - экран, на котором требуется отрисовать
 # img - фоновая картинка. Если отсутствует, осуществляется заливка серым фоном
 def draw_background(scr, img = None):
-	'''if img:
+	if img:
 		img_width, img_height = img.get_size() # get_size() - метод Surface
 		global WINDOW
 		ratio_width = math.ceil(WINDOW[0]/img_width)
@@ -192,10 +202,10 @@ def draw_background(scr, img = None):
 				# Второй аргумент blit() - координаты левого верхнего края изображения
 				# относительно того же края экрана
 				scr.blit(img, (img_width*w, img_height*h))
-	else:''' # Жрет много FPS
-	background = pygame.Surface(scr.get_size())
-	background.fill((0, 0, 0))
-	scr.blit(background, (0, 0))
+	else: # Жрет много FPS
+		background = pygame.Surface(scr.get_size())
+		background.fill((128, 128, 128))
+		scr.blit(background, (0, 0))
 
 # Обрабатывает события
 def process_events(events, hero):
@@ -248,7 +258,8 @@ def collide(characters, platforms):
 				if not pygame.sprite.collide_rect(char, plate): # и столкновения бы не произошло
 					if char.v_x > 0: # Если движется вправо
 						char.rect.right = plate.rect.left
-					if char.v_x < 0: #	Если влево
+					else: #	Если влево (0 быть не может, иначе столкновение произошло 
+						# не из-за горизонтального движения)
 						char.rect.left = plate.rect.right
 				else:
 					char.rect.x += char.v_x
@@ -287,11 +298,13 @@ def main():
 	global FPS
 	global CHARACTERS
 	global PLATFORMS
+	global WINDOW
 	
+	# Создаем окно
+	screen = pygame.display.set_mode(WINDOW, pygame.FULLSCREEN | pygame.HWSURFACE | pygame.DOUBLEBUF) 
+	pygame.display.set_caption("Platformer") # Задаем заголовок окна
 	background = pygame.image.load("./resources/backgrounds/background.png") # Загружаем изображение
-	screen = pygame.display.get_surface()
-	# Засовывать это в init_window() нельзя: screen требуется для draw() персонажей,
-	# и сделать screen глобальным параметром, определив до создания окна, тоже невозможно
+	background = background.convert() # Для ускорения отрисовки
 	
 	hero = Hero(100, 100)
 	for i in range(130):
@@ -330,5 +343,4 @@ def main():
 # без пути и расширения ('main'). Если файл запускается непосредственно, __name__  
 # принимает значенние __main__
 if __name__ == "__main__":
-	init_window() # Инициализируем окно приложения
 	main()
