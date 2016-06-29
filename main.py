@@ -15,6 +15,7 @@ WIN_WIDTH = info_object.current_w # Ширина главного создава
 WIN_HEIGHT = info_object.current_h # Высота
 WINDOW = (WIN_WIDTH, WIN_HEIGHT) # Заносим ширину и высоту в одну переменную
 HALF_WINDOW = (WIN_WIDTH//2, WIN_HEIGHT//2)
+
 FPS = 60
 G = 1 # Ускорение свободного падения
 
@@ -59,7 +60,7 @@ class Hero(GameObject):
 		global FPS
 		
 		self.img = './resources/characters/hero/stand/1.png'
-		self.right_standing = pygame.image.load(self.img)
+		self.right_standing = pygame.image.load(self.img).convert_alpha()
 		self.left_standing = pygame.transform.flip(self.right_standing, True, False)
 		super().__init__(self.img, x, y, prohod)
 		
@@ -188,21 +189,31 @@ class Camera():
 		# Сами объекты не смещаются
 		# TODO: отдаление камеры при ускорении для повышения реакции
 
+# Создает фон по размерам поверхности, используя за основу изображение меньшего размера
+# scr - поверхность для отрисовки
+# base_back_path - путь к используемому изображению
+def create_background(scr, base_back_path):
+	base_back = pygame.image.load(base_back_path) # Загружаем изображение
+	base_back = base_back.convert() # Для ускорения отрисовки
+	
+	base_img_width, base_img_height = base_back.get_size() # get_size() - метод Surface
+	img_width, img_height = scr.get_size()
+	ratio_width = math.ceil(img_width/base_img_width)
+	ratio_height = math.ceil(img_height/base_img_height)
+	for h in range(ratio_height):
+		for w in range(ratio_width):
+			# Второй аргумент blit() - координаты левого верхнего края изображения
+			# относительно того же края экрана
+			scr.blit(base_back, (base_img_width*w, base_img_height*h))
+	return scr.copy()
+
 # Рисует фон
-# scr - экран, на котором требуется отрисовать
+# scr - поверхность для отрисовки
 # img - фоновая картинка. Если отсутствует, осуществляется заливка серым фоном
 def draw_background(scr, img = None):
 	if img:
-		img_width, img_height = img.get_size() # get_size() - метод Surface
-		global WINDOW
-		ratio_width = math.ceil(WINDOW[0]/img_width)
-		ratio_height = math.ceil(WINDOW[1]/img_height)
-		for h in range(ratio_height):
-			for w in range(ratio_width):
-				# Второй аргумент blit() - координаты левого верхнего края изображения
-				# относительно того же края экрана
-				scr.blit(img, (img_width*w, img_height*h))
-	else: # Жрет много FPS
+		scr.blit(img, (0, 0))
+	else:
 		background = pygame.Surface(scr.get_size())
 		background.fill((128, 128, 128))
 		scr.blit(background, (0, 0))
@@ -303,8 +314,9 @@ def main():
 	# Создаем окно
 	screen = pygame.display.set_mode(WINDOW, pygame.FULLSCREEN | pygame.HWSURFACE | pygame.DOUBLEBUF) 
 	pygame.display.set_caption("Platformer") # Задаем заголовок окна
-	background = pygame.image.load("./resources/backgrounds/background.png") # Загружаем изображение
-	background = background.convert() # Для ускорения отрисовки
+	# Создаем фон
+	base_background = "./resources/backgrounds/background.png"
+	background = create_background(screen, base_background) # return Surface
 	
 	hero = Hero(100, 100)
 	for i in range(130):
