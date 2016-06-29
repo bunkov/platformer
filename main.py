@@ -5,6 +5,8 @@ from pygame.locals import * # pygame.locals содержит константы 
 import math
 import pyganim # Для анимации
 import os # Для работы с файловой системой
+from tiledtmxloader import tmxreader # Загружает карты из Tiled Map Editor
+from tiledtmxloader import helperspygame # Преобразует
 
 pygame.init() # Инициация PyGame, обязательная строчка
 CHARACTERS = pygame.sprite.Group()
@@ -304,7 +306,10 @@ def print_info(scr, font, seconds, frames, hero):
 		infRect.topright = (WINDOW[0] - 20, 20*i)
 		scr.blit(infSurf, infRect)
 		i += 1
-				
+
+# Загружает уровень		
+def load_level(name):
+	world_map = tmxreader.TileMapParser().parse_decode('./maps/%s.tmx' % name)
 def main():
 	global FPS
 	global CHARACTERS
@@ -317,6 +322,8 @@ def main():
 	# Создаем фон
 	base_background = "./resources/backgrounds/background.png"
 	background = create_background(screen, base_background) # return Surface
+	# Загружаем карту
+	load_level('test')
 	
 	hero = Hero(100, 100)
 	for i in range(130):
