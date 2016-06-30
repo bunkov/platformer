@@ -222,6 +222,6 @@
 </data>
  </layer>
  <objectgroup name="Characters">
-  <object id="1" name="Hero" gid="3" x="17" y="3098" width="64" height="80"/>
+  <object id="1" name="hero" gid="3" x="17" y="3098" width="64" height="80"/>
  </objectgroup>
 </map>
