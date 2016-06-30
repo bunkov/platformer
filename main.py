@@ -5,12 +5,12 @@ from pygame.locals import * # pygame.locals содержит константы 
 import math
 import pyganim # Для анимации
 import os # Для работы с файловой системой
-from tiledtmxloader import tmxreader # Загружает карты из Tiled Map Editor
-from tiledtmxloader import helperspygame # Преобразует
+import pytmx # Загружает карты из Tiled Map Editor и переводит в понятный pygame формат
 
 pygame.init() # Инициация PyGame, обязательная строчка
 CHARACTERS = pygame.sprite.Group()
 PLATFORMS = pygame.sprite.Group()
+BACKS = pygame.sprite.Group()
 
 info_object = pygame.display.Info() # Объект с информацией о графической среде компьютера
 WIN_WIDTH = info_object.current_w # Ширина главного создаваемого окна
@@ -25,10 +25,10 @@ G = 1 # Ускорение свободного падения
 class GameObject(pygame.sprite.Sprite):
 	# img - путь к файлу с изображением объекта
 	# x, y - координаты объекта на игровом поле
-	# prohod - проходимый ли объект
-	def __init__(self, img, x, y, prohod):
+	# stable - устойчивый ли объект
+	def __init__(self, img, x, y, stable):
 		pygame.sprite.Sprite.__init__(self)
-		self.image = pygame.image.load(img).convert() # Загружаем изображение объекта
+		self.image = img.convert() # pytmx передает Surface при считывании карты
 		self.x = x
 		self.y = y
 		self.width, self.height = self.image.get_size()
@@ -45,35 +45,39 @@ class GameObject(pygame.sprite.Sprite):
 # Платформы
 class Platform(GameObject):
 	# x, y - координаты объекта на игровом поле
-	# prohod - проходимый ли объект
-	def __init__(self, x, y, prohod = True, img = None):
+	# stable - устойчивый ли объект
+	def __init__(self, img, x, y, stable = True):
 		global PLATFORMS
-	
-		self.img = './resources/platforms/wall.png'
-		super().__init__(self.img, x, y, prohod)
 		
-		PLATFORMS.add(self)
+		super().__init__(img, x, y, stable)
+		
+		if stable:
+			PLATFORMS.add(self)
+		else:
+			BACKS.add(self)
 
-# Управляемый персонаж
-class Hero(GameObject):
+# Персонаж
+class Character(GameObject):
 	# x, y - координаты объекта на игровом поле
-	def __init__(self, x, y, prohod = True):
+	# folder - папка с картинками для анимации
+	def __init__(self, img, x, y, folder, power, v_lim, jump_power, stable = True):
 		global CHARACTERS
 		global FPS
 		
-		self.img = './resources/characters/hero/stand/1.png'
-		self.right_standing = pygame.image.load(self.img).convert_alpha()
+		self.right_standing = img.convert_alpha()
 		self.left_standing = pygame.transform.flip(self.right_standing, True, False)
-		super().__init__(self.img, x, y, prohod)
+		# FIXME: Стойку тоже нужно анимировать
+		super().__init__(img, x, y, stable)
 		
 		self.on_ground = self.left = self.right = self.down = self.up = self.jumping = False
 		
 		self.v_x = 0
 		self.v_y = 0
-		self.power = 2*self.height/FPS # Ускорение при беге. 
-		# Из-за него на данный момент прохождение сквозь стены
-		self.v_lim = 12*self.height/FPS # Предельная скорость 
-		# Скорость [высот/тик] = [высот/с] / [тик/с]
+		
+		self.power = power # Ускорение при беге 
+		self.v_lim = v_lim # Предельная скорость
+		self.jump_power = jump_power # Сила прыжка (в единицах G)
+		
 		self.direction = 'right'
 		
 		CHARACTERS.add(self)
@@ -84,7 +88,7 @@ class Hero(GameObject):
 		for animType in animTypes:
 			animType_r = 'right_' + animType
 			animType_l = 'left_' + animType
-			path = './resources/characters/hero/%s/' % animType_r
+			path = './resources/characters/%s/%s/' % (folder, animType_r)
 			files = os.listdir(path)
 			num_files = 0
 			for file in files:
@@ -92,6 +96,7 @@ class Hero(GameObject):
 					num_files += 1
 					
 			imagesAndDurations = [(path + str(num) + '.png', 60) for num in range(1, num_files + 1)]
+			# FIXME: Какое нужно время между кадрами?
 			self.animObjs[animType_r] = pyganim.PygAnimation(imagesAndDurations)
 			
 			self.animObjs[animType_l] = self.animObjs[animType_r].getCopy()
@@ -112,7 +117,7 @@ class Hero(GameObject):
 			self.v_x += self.power
 			if self.v_x > self.v_lim:
 				self.v_x = self.v_lim
-		elif not(self.left or self.right) and self.on_ground:  
+		elif not(self.left or self.right):
 			self.v_x = 0
 			'''and self.v_x != 0:
 			self.v_x += math.copysign(self.power, -self.v_x) # Замедление при остановке
@@ -121,7 +126,7 @@ class Hero(GameObject):
 			
 		
 		if self.up and self.on_ground:
-			self.v_y = -12*G
+			self.v_y = -self.jump_power*G
 		
 		if not self.on_ground:
 			self.v_y += G
@@ -155,6 +160,16 @@ class Hero(GameObject):
 			elif self.direction == 'right':
 				scr.blit(self.right_standing, coords)
 
+class Hero(Character):
+	def __init__(self, x, y, folder = 'hero'):
+		img_path = './resources/characters/hero/stand/1.png'
+		img = pygame.image.load(img_path)
+		self.width, self.height = img.get_size()
+		self.power = 2*self.height/FPS # Ускорение при беге. 
+		self.v_lim = 12*self.height/FPS # Предельная скорость 
+		# Скорость [высот/тик] = [высот/с] / [тик/с]
+		super().__init__(img, x, y, folder)
+		
 # Реализация скроллинга
 class Camera():
 	# level_width, level_height - размеры игрового поля
@@ -307,13 +322,41 @@ def print_info(scr, font, seconds, frames, hero):
 		scr.blit(infSurf, infRect)
 		i += 1
 
-# Загружает уровень		
+# Загружает уровень, возвращает объект под управление и размеры уровня
 def load_level(name):
-	world_map = tmxreader.TileMapParser().parse_decode('./maps/%s.tmx' % name)
+	tiled_map = pytmx.util_pygame.load_pygame('./maps/%s.tmx' % name)
+	lvl_width = tiled_map.tilewidth * tiled_map.width
+	lvl_height = tiled_map.tileheight * tiled_map.height
+	
+	back_lay = tiled_map.layers[0]
+	plate_lay = tiled_map.layers[1]
+	char_lay = tiled_map.layers[2]
+	
+	# Создаем устойчивые платформы
+	for x, y, img in plate_lay.tiles():
+		x_pix = x * tiled_map.tilewidth
+		y_pix = y *	tiled_map.tileheight
+		Platform(img, x_pix, y_pix)
+	# Создаем неустойчивые платформы
+	for x, y, img in back_lay.tiles():
+		x_pix = x *	tiled_map.tilewidth
+		y_pix = y *	tiled_map.tileheight
+		Platform(img, x_pix, y_pix, False)
+	# Заселяем персонажами
+	for char in char_lay:
+		power = float(char.power)
+		v_lim = float(char.v_lim)
+		jump_power = float(char.jump_power)
+		character = Character(char.image, char.x, char.y, char.name, power, v_lim, jump_power)
+		if char.name == 'hero':
+			hero = character
+	return hero, lvl_width, lvl_height
+	
 def main():
 	global FPS
 	global CHARACTERS
 	global PLATFORMS
+	global BACKS
 	global WINDOW
 	
 	# Создаем окно
@@ -323,19 +366,15 @@ def main():
 	base_background = "./resources/backgrounds/background.png"
 	background = create_background(screen, base_background) # return Surface
 	# Загружаем карту
-	load_level('test')
+	hero, lvl_width, lvl_height = load_level('test2')
 	
-	hero = Hero(100, 100)
-	for i in range(130):
-		Platform(100+32*i,600)
-	for i in range(10):
-		Platform(300+32*i,536)
-	camera = Camera(4000, 2000)
+	camera = Camera(lvl_width, lvl_height)
 	
-	objects = pygame.sprite.Group()
+	'''objects = pygame.sprite.Group()
 	objects.add(CHARACTERS)
 	objects.add(PLATFORMS)
-	sprites = objects.sprites()
+	objects.add(BACKS)
+	sprites = objects.sprites()'''
 	
 	Clock = pygame.time.Clock()
 	
@@ -350,8 +389,12 @@ def main():
 		dx, dy = camera.update(hero)
 		
 		draw_background(screen, background) # Фон перерисовывается поверх устаревших положений персонажей
-		for sprite in sprites:
-			sprite.draw(screen, dx, dy)
+		for back in BACKS.sprites():
+			back.draw(screen, dx, dy)
+		for plate in PLATFORMS.sprites():
+			plate.draw(screen, dx, dy)
+		for char in CHARACTERS.sprites():
+			char.draw(screen, dx, dy)
 		
 		tick = Clock.tick(FPS)
 		print_info(screen, text_font, tick/1000, 1, hero)
