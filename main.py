@@ -366,7 +366,7 @@ def main():
 	base_background = "./resources/backgrounds/background.png"
 	background = create_background(screen, base_background) # return Surface
 	# Загружаем карту
-	hero, lvl_width, lvl_height = load_level('test2')
+	hero, lvl_width, lvl_height = load_level('test3')
 	
 	camera = Camera(lvl_width, lvl_height)
 	
